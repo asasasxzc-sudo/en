@@ -47,123 +47,103 @@
     </div>
 
     <script>
-    // 自动适配你的 Worker 地址
     const API_URL = window.location.origin; 
-    const mic = document.getElementById('mic') || document.getElementById('micBtn');
+    const mic = document.getElementById('mic');
     const status = document.getElementById('status');
     const chat = document.getElementById('chat');
 
     const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition = null;
-    let isStarted = false;
 
-    if (!Speech) {
-        status.innerText = "抱歉，您的浏览器不支持语音识别";
-    } else {
+    if (Speech) {
         recognition = new Speech();
-        recognition.continuous = false;
+        recognition.continuous = false; // 手机端设为 false 更稳定
         recognition.interimResults = false;
 
-        // 核心：处理开始录音
         recognition.onstart = () => {
-            isStarted = true;
-            mic.classList.add('mic-active', 'pulse'); // 增加动画反馈
-            status.innerText = "正在倾听...";
+            status.innerText = "Listening...";
+            mic.classList.add('pulse', 'bg-red-500'); 
         };
 
-        // 核心：处理录音结束
         recognition.onend = () => {
-            isStarted = false;
-            mic.classList.remove('mic-active', 'pulse');
-            if (status.innerText === "正在倾听...") status.innerText = "就绪";
+            mic.classList.remove('pulse', 'bg-red-500');
+            if(status.innerText === "Listening...") status.innerText = "Ready";
         };
 
-        // 核心：处理错误
         recognition.onerror = (e) => {
-            isStarted = false;
-            mic.classList.remove('mic-active', 'pulse');
-            console.error("Speech Error:", e.error);
-            
-            if (e.error === 'not-allowed') {
-                status.innerText = "错误：权限被拒绝";
-                alert("请点击地址栏左侧『小锁』或『AA』图标，手动允许麦克风。");
-            } else if (e.error === 'aborted') {
-                status.innerText = "已重置 (RESET)";
+            console.log("Error type:", e.error);
+            if (e.error === 'aborted') {
+                status.innerText = "Retry Clicking..."; 
             } else {
-                status.innerText = "错误: " + e.error;
+                status.innerText = "Error: " + e.error;
             }
         };
 
-        // 核心：处理识别结果
         recognition.onresult = async (e) => {
             const text = e.results[0][0].transcript;
-            appendMsg('User', text);
-            status.innerText = "AI 思考中...";
-
-            try {
-                const res = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text, lang: document.getElementById('lang').value })
-                });
-                const data = await res.json();
-                
-                appendMsg('AI', data.answer);
-                updateCards(data);
-                speak(data.answer);
-                status.innerText = "就绪";
-            } catch (err) {
-                status.innerText = "API 连接失败";
-            }
+            handleSend(text);
         };
     }
 
-    // 绑定点击事件 - 针对 iPad 优化的暴力启动逻辑
-    mic.onclick = () => {
-        if (!recognition) return;
-
-        // 1. 尝试播放一个静音片段（iOS 必须先有音频交互才能解锁录音通道）
-        const synth = window.speechSynthesis;
-        const u = new SpeechSynthesisUtterance("");
-        u.volume = 0;
-        synth.speak(u);
-
-        if (isStarted) {
-            recognition.stop();
-        } else {
-            // 2. 先强行终止之前的实例
-            try { recognition.abort(); } catch(e) {}
-
-            // 3. 稍作延迟后再启动
-            setTimeout(() => {
-                try {
-                    recognition.lang = document.getElementById('lang').value;
-                    recognition.start();
-                } catch (err) {
-                    status.innerText = "启动失败，请刷新";
-                }
-            }, 200);
+    // 核心：处理发送逻辑（打字或语音共用）
+    async function handleSend(text) {
+        if(!text) return;
+        appendMsg('User', text);
+        status.innerText = "Thinking...";
+        try {
+            const res = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, lang: document.getElementById('lang').value })
+            });
+            const data = await res.json();
+            appendMsg('AI', data.answer);
+            if(data.words) updateCards(data);
+            speak(data.answer);
+            status.innerText = "Ready";
+        } catch (err) {
+            status.innerText = "API Error";
         }
+    }
+
+    // 针对 iPad 优化的点击逻辑
+    mic.onclick = () => {
+        if (!recognition) return alert("Browser not supported");
+
+        // 第一步：激活音频（重要！）
+        window.speechSynthesis.getVoices(); 
+        
+        // 第二步：强制重置
+        try { recognition.abort(); } catch(err) {}
+
+        // 第三步：极速启动
+        setTimeout(() => {
+            try {
+                recognition.lang = document.getElementById('lang').value;
+                recognition.start();
+            } catch (e) {
+                location.reload(); // 如果连启动都崩了，直接刷页面
+            }
+        }, 50);
     };
 
-    function appendMsg(sender, text) {
-        const div = document.createElement('div');
-        div.className = `p-4 rounded-2xl ${sender === 'User' ? 'bg-indigo-600/10 ml-10 border border-indigo-500/20' : 'bg-zinc-800 mr-10 border border-white/5'}`;
-        div.innerHTML = `<small class="block mb-1 text-zinc-500 text-[10px] font-bold uppercase">${sender}</small><p>${text}</p>`;
-        chat.appendChild(div);
+    function appendMsg(s, t) {
+        const d = document.createElement('div');
+        d.className = `p-3 rounded-xl mb-2 \${s==='User'?'bg-indigo-600/20 ml-8':'bg-zinc-800 mr-8'}`;
+        d.innerHTML = `<small class="block opacity-50 text-[10px]">\${s}</small>\${t}`;
+        chat.appendChild(d);
         chat.scrollTop = chat.scrollHeight;
     }
 
-    function updateCards(data) {
-        if (data.words) {
-            document.getElementById('words').innerHTML = data.words.map(w => `<div>${w.word}: ${w.mean}</div>`).join('');
-        }
+    function speak(t) {
+        const u = new SpeechSynthesisUtterance(t);
+        u.lang = document.getElementById('lang').value;
+        window.speechSynthesis.speak(u);
     }
 
-    function speak(text) {
-        const ut = new SpeechSynthesisUtterance(text);
-        ut.lang = document.getElementById('lang').value;
-        window.speechSynthesis.speak(ut);
+    function updateCards(data) {
+        const w = document.getElementById('words');
+        if(w && data.words) w.innerHTML = data.words.map(i => `<div>\${i.word}: \${i.mean}</div>`).join('');
     }
 </script>
 </body>
