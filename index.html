@@ -8,7 +8,7 @@
     <style>
         body { background: #0c0c0e; color: #e4e4e7; font-family: sans-serif; }
         .card { background: #18181b; border: 1px solid #27272a; border-radius: 1.5rem; }
-        .mic-active { background: #ef4444 !important; box-shadow: 0 0 25px rgba(239, 68, 68, 0.5); transform: scale(1.1); }
+        .mic-active { background: #ef4444 !important; box-shadow: 0 0 30px rgba(239, 68, 68, 0.6); transform: scale(1.1); }
         .chat-container::-webkit-scrollbar { width: 4px; }
         .chat-container::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 10px; }
     </style>
@@ -17,7 +17,7 @@
     <div class="max-w-5xl mx-auto w-full flex flex-grow flex-col">
         <header class="flex justify-between items-center mb-10">
             <h1 class="text-2xl font-black italic text-indigo-500 tracking-tighter">YMTEA.VOICE</h1>
-            <select id="lang" class="bg-zinc-800 border-none rounded-xl px-4 py-2 text-sm outline-none ring-1 ring-white/10">
+            <select id="lang" class="bg-zinc-800 border-none rounded-xl px-4 py-2 text-sm outline-none">
                 <option value="en-US">English</option>
                 <option value="de-DE">Deutsch</option>
                 <option value="fr-FR">Français</option>
@@ -27,32 +27,32 @@
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-8 flex-grow">
             <div class="md:col-span-2 card p-6 flex flex-col shadow-2xl">
-                <div id="chat" class="flex-grow overflow-y-auto space-y-4 mb-6 chat-container min-h-[300px]">
-                    <p class="text-zinc-600 text-center mt-20 text-sm">点击麦克风开启 ${document.getElementById('lang').selectedOptions[0].text} 练习</p>
+                <div id="chat" class="flex-grow overflow-y-auto space-y-4 mb-6 chat-container min-h-[350px]">
+                    <p class="text-zinc-600 text-center mt-20 text-sm italic">请确保使用 HTTPS 访问并允许麦克风权限</p>
                 </div>
                 <div class="flex flex-col items-center gap-4 py-4">
-                    <button id="mic" class="w-20 h-20 bg-indigo-600 rounded-full flex items-center justify-center transition-all duration-300 hover:bg-indigo-500">
+                    <button id="mic" class="w-24 h-24 bg-indigo-600 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg">
                         <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
                     </button>
-                    <span id="status" class="text-[11px] uppercase tracking-widest text-zinc-500 font-bold">Ready</span>
+                    <span id="status" class="text-[11px] uppercase tracking-[0.2em] text-zinc-500 font-bold">准备就绪</span>
                 </div>
             </div>
 
             <div class="space-y-6">
                 <div class="card p-6 border-t-4 border-t-indigo-500">
-                    <h2 class="text-[10px] font-bold text-zinc-500 uppercase mb-4 tracking-widest">生词本 / Vocabulary</h2>
+                    <h2 class="text-[10px] font-bold text-zinc-400 uppercase mb-4 tracking-widest">生词 / Vocabulary</h2>
                     <div id="words" class="space-y-3"></div>
                 </div>
                 <div class="card p-6 border-t-4 border-t-emerald-500">
-                    <h2 class="text-[10px] font-bold text-zinc-500 uppercase mb-4 tracking-widest">地道表达 / Phrases</h2>
-                    <div id="phrases" class="text-sm italic text-zinc-300 leading-relaxed"></div>
+                    <h2 class="text-[10px] font-bold text-zinc-400 uppercase mb-4 tracking-widest">地道短语 / Phrases</h2>
+                    <div id="phrases" class="text-sm italic text-zinc-300"></div>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        const API_URL = 'https://en.ymtea.club'; 
+        const API_URL = 'https://en.ymtea.club'; // 确保这是你的 Worker 地址
         const mic = document.getElementById('mic');
         const status = document.getElementById('status');
         const chat = document.getElementById('chat');
@@ -69,26 +69,29 @@
             recognition.onstart = () => {
                 isListening = true;
                 mic.classList.add('mic-active');
-                status.innerText = "Listening...";
+                status.innerText = "正在听...";
             };
 
             recognition.onend = () => {
                 isListening = false;
                 mic.classList.remove('mic-active');
-                if (status.innerText === "Listening...") status.innerText = "Ready";
             };
 
             recognition.onerror = (event) => {
                 isListening = false;
                 mic.classList.remove('mic-active');
-                status.innerText = "Error: " + event.error;
-                console.error("Speech Error:", event.error);
+                if (event.error === 'not-allowed') {
+                    status.innerText = "错误：权限被拒绝！请在浏览器设置中开启麦克风。";
+                    alert("请在地址栏左侧点击“小锁”图标，允许麦克风访问。");
+                } else {
+                    status.innerText = "错误: " + event.error;
+                }
             };
 
             recognition.onresult = async (e) => {
                 const text = e.results[0][0].transcript;
                 appendMsg('User', text);
-                status.innerText = "Thinking...";
+                status.innerText = "思考中...";
 
                 try {
                     const res = await fetch(API_URL, {
@@ -97,21 +100,19 @@
                         body: JSON.stringify({ text, lang: document.getElementById('lang').value })
                     });
                     const data = await res.json();
-                    
                     appendMsg('AI', data.answer);
                     updateLearningCards(data);
                     speak(data.answer);
-                    status.innerText = "Ready";
+                    status.innerText = "就绪";
                 } catch (err) {
-                    status.innerText = "API Error";
-                    console.error(err);
+                    status.innerText = "连接 API 失败";
                 }
             };
         }
 
         mic.onclick = () => {
             if (!recognition) {
-                alert("此浏览器不支持语音识别，请换用 Chrome。");
+                alert("此浏览器不支持语音识别，请使用桌面版 Chrome。");
                 return;
             }
             if (isListening) {
@@ -121,15 +122,15 @@
                     recognition.lang = document.getElementById('lang').value;
                     recognition.start();
                 } catch (e) {
-                    recognition.stop();
+                    status.innerText = "启动失败，请刷新";
                 }
             }
         };
 
         function appendMsg(sender, text) {
             const div = document.createElement('div');
-            div.className = `p-4 rounded-2xl animate-fade-in ${sender === 'User' ? 'bg-indigo-600/10 ml-10 border border-indigo-500/20' : 'bg-zinc-800 mr-10 border border-white/5'}`;
-            div.innerHTML = `<small class="block mb-1 text-zinc-500 text-[10px] font-bold uppercase">${sender}</small><p class="leading-relaxed">${text}</p>`;
+            div.className = `p-4 rounded-2xl ${sender === 'User' ? 'bg-indigo-600/10 ml-10 border border-indigo-500/20' : 'bg-zinc-800 mr-10 border border-white/5'}`;
+            div.innerHTML = `<small class="block mb-1 text-zinc-500 font-bold text-[10px] uppercase">${sender}</small>${text}`;
             chat.appendChild(div);
             chat.scrollTop = chat.scrollHeight;
         }
@@ -142,7 +143,7 @@
                     <span class="text-xs text-zinc-500">${w.mean}</span>
                 </div>
             `).join('');
-            document.getElementById('phrases').innerHTML = data.phrases.map(p => `<p class="mb-3">“${p}”</p>`).join('');
+            document.getElementById('phrases').innerHTML = data.phrases.map(p => `<p class="mb-2">“${p}”</p>`).join('');
         }
 
         function speak(text) {
