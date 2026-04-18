@@ -11,11 +11,11 @@
         .mic-active { background: #ef4444 !important; box-shadow: 0 0 30px rgba(239, 68, 68, 0.6); transform: scale(1.1); }
     </style>
 </head>
-<body class="min-h-screen flex flex-col p-4">
-    <div class="max-w-4xl mx-auto w-full flex-grow flex flex-col">
-        <header class="flex justify-between items-center py-6">
-            <h1 class="text-xl font-bold text-indigo-500">YMTEA.VOICE</h1>
-            <select id="lang" class="bg-zinc-800 rounded-lg px-3 py-1 text-sm outline-none">
+<body class="min-h-screen flex flex-col p-4 md:p-10">
+    <div class="max-w-5xl mx-auto w-full flex flex-grow flex-col">
+        <header class="flex justify-between items-center mb-10">
+            <h1 class="text-2xl font-black italic text-indigo-500 tracking-tighter">YMTEA.VOICE</h1>
+            <select id="lang" class="bg-zinc-800 border-none rounded-xl px-4 py-2 text-sm outline-none">
                 <option value="en-US">English</option>
                 <option value="de-DE">Deutsch</option>
                 <option value="fr-FR">Français</option>
@@ -23,137 +23,119 @@
             </select>
         </header>
 
-        <div id="chat" class="flex-grow overflow-y-auto space-y-4 mb-6 min-h-[300px]">
-            <p class="text-zinc-600 text-center mt-10">后端已就绪，请点击按钮并说话</p>
-        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 flex-grow">
+            <div class="md:col-span-2 card p-6 flex flex-col shadow-2xl">
+                <div id="chat" class="flex-grow overflow-y-auto space-y-4 mb-6 chat-container min-h-[350px]">
+                    <p class="text-zinc-600 text-center mt-20 text-sm">点击麦克风说话，或在下方输入文字</p>
+                </div>
+                
+                <div class="relative mb-6">
+                    <input type="text" id="textInput" placeholder="输入你想说的话..." 
+                        class="w-full bg-zinc-900 border border-white/10 rounded-2xl px-6 py-4 text-sm outline-none focus:ring-2 ring-indigo-500 transition-all">
+                    <button id="sendBtn" class="absolute right-3 top-2.5 bg-indigo-600 p-2 rounded-xl hover:bg-indigo-500">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path></svg>
+                    </button>
+                </div>
 
-        <div class="flex flex-col items-center gap-4 pb-10">
-            <button id="mic" class="w-20 h-20 bg-indigo-600 rounded-full flex items-center justify-center transition-all duration-300">
-                <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
-            </button>
-            <span id="status" class="text-xs text-zinc-500 font-mono tracking-widest uppercase">READY</span>
-        </div>
-        
-        <div class="grid grid-cols-2 gap-4 mb-4">
-            <div class="card p-4 text-xs">
-                <h3 class="text-zinc-500 mb-2 font-bold">VOCABULARY</h3>
-                <div id="words" class="space-y-1"></div>
+                <div class="flex flex-col items-center gap-4 py-4">
+                    <button id="mic" class="w-20 h-20 bg-indigo-600 rounded-full flex items-center justify-center transition-all duration-300">
+                        <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                    </button>
+                    <span id="status" class="text-[11px] uppercase tracking-widest text-zinc-500 font-bold">Ready</span>
+                </div>
             </div>
-            <div class="card p-4 text-xs">
-                <h3 class="text-zinc-500 mb-2 font-bold">PHRASES</h3>
-                <div id="phrases" class="text-zinc-400"></div>
+
+            <div class="space-y-6">
+                <div class="card p-6 border-t-4 border-t-indigo-500">
+                    <h2 class="text-[10px] font-bold text-zinc-400 uppercase mb-4 tracking-widest">生词 / Vocabulary</h2>
+                    <div id="words" class="space-y-3 text-sm"></div>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
-    const API_URL = window.location.origin; 
-    const mic = document.getElementById('mic');
-    const status = document.getElementById('status');
-    const chat = document.getElementById('chat');
+        const API_URL = window.location.origin; 
+        const mic = document.getElementById('mic');
+        const status = document.getElementById('status');
+        const chat = document.getElementById('chat');
+        const textInput = document.getElementById('textInput');
+        const sendBtn = document.getElementById('sendBtn');
 
-    const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
-    let recognition = null;
+        // 语音逻辑
+        const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+        let isStarted = false;
 
-    if (Speech) {
-        recognition = new Speech();
-        recognition.continuous = false; // 手机端设为 false 更稳定
-        recognition.interimResults = false;
+        if (Speech) {
+            recognition = new Speech();
+            recognition.onstart = () => { isStarted = true; mic.classList.add('bg-red-500', 'scale-110'); status.innerText = "Listening..."; };
+            recognition.onend = () => { isStarted = false; mic.classList.remove('bg-red-500', 'scale-110'); };
+            recognition.onerror = (e) => { status.innerText = e.error === 'aborted' ? 'Retry Clicking' : 'Error: ' + e.error; };
+            recognition.onresult = (e) => handleSend(e.results[0][0].transcript);
+        }
 
-        recognition.onstart = () => {
-            status.innerText = "Listening...";
-            mic.classList.add('pulse', 'bg-red-500'); 
-        };
-
-        recognition.onend = () => {
-            mic.classList.remove('pulse', 'bg-red-500');
-            if(status.innerText === "Listening...") status.innerText = "Ready";
-        };
-
-        recognition.onerror = (e) => {
-            console.log("Error type:", e.error);
-            if (e.error === 'aborted') {
-                status.innerText = "Retry Clicking..."; 
-            } else {
-                status.innerText = "Error: " + e.error;
+        // 处理点击麦克风
+        mic.onclick = () => {
+            if (!recognition) return alert("不支持语音");
+            window.speechSynthesis.getVoices(); // 激活音频驱动
+            if (isStarted) { recognition.stop(); } 
+            else { 
+                try { recognition.lang = document.getElementById('lang').value; recognition.start(); } 
+                catch(e) { recognition.abort(); setTimeout(() => recognition.start(), 50); }
             }
         };
 
-        recognition.onresult = async (e) => {
-            const text = e.results[0][0].transcript;
-            handleSend(text);
+        // 处理打字发送
+        const submitText = () => {
+            const val = textInput.value.trim();
+            if (val) {
+                handleSend(val);
+                textInput.value = '';
+            }
         };
-    }
 
-    // 核心：处理发送逻辑（打字或语音共用）
-    async function handleSend(text) {
-        if(!text) return;
-        appendMsg('User', text);
-        status.innerText = "Thinking...";
-        try {
-            const res = await fetch(API_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text, lang: document.getElementById('lang').value })
-            });
-            const data = await res.json();
-            appendMsg('AI', data.answer);
-            if(data.words) updateCards(data);
-            speak(data.answer);
-            status.innerText = "Ready";
-        } catch (err) {
-            status.innerText = "API Error";
+        sendBtn.onclick = submitText;
+        textInput.onkeydown = (e) => { if(e.key === 'Enter') submitText(); };
+
+        // 统一发送函数
+        async function handleSend(text) {
+            appendMsg('User', text);
+            status.innerText = "Thinking...";
+            try {
+                const res = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text, lang: document.getElementById('lang').value })
+                });
+                const data = await res.json();
+                appendMsg('AI', data.answer);
+                if(data.words) updateCards(data);
+                speak(data.answer);
+                status.innerText = "Ready";
+            } catch (err) {
+                status.innerText = "API Error";
+            }
         }
-    }
 
-    // 针对 iPad 优化的点击逻辑
-    mic.onclick = () => {
-    if (!recognition) return alert("浏览器不支持");
-
-    // 1. 强制夺取音频上下文控制权 (iOS 必做)
-    window.speechSynthesis.getVoices();
-    const synth = window.speechSynthesis;
-    const u = new SpeechSynthesisUtterance("");
-    u.volume = 0;
-    synth.speak(u);
-
-    // 2. 检查状态并切换
-    if (isStarted) {
-        recognition.stop();
-        isStarted = false;
-        status.innerText = "Ready";
-    } else {
-        // 3. 核心：不加任何 setTimeout，直接启动
-        try {
-            recognition.lang = document.getElementById('lang').value;
-            recognition.start();
-        } catch (err) {
-            // 如果启动瞬间报错，说明有残留，强行 abort 后立即重试
-            recognition.abort();
-            setTimeout(() => {
-                recognition.start();
-            }, 50);
+        function appendMsg(sender, text) {
+            const div = document.createElement('div');
+            div.className = `p-4 rounded-2xl ${sender === 'User' ? 'bg-indigo-600/10 ml-10' : 'bg-zinc-800 mr-10'}`;
+            div.innerHTML = `<small class="block mb-1 text-zinc-500 text-[10px] font-bold">${sender}</small><p>${text}</p>`;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
         }
-    }
-};
-    function appendMsg(s, t) {
-        const d = document.createElement('div');
-        d.className = `p-3 rounded-xl mb-2 \${s==='User'?'bg-indigo-600/20 ml-8':'bg-zinc-800 mr-8'}`;
-        d.innerHTML = `<small class="block opacity-50 text-[10px]">\${s}</small>\${t}`;
-        chat.appendChild(d);
-        chat.scrollTop = chat.scrollHeight;
-    }
 
-    function speak(t) {
-        const u = new SpeechSynthesisUtterance(t);
-        u.lang = document.getElementById('lang').value;
-        window.speechSynthesis.speak(u);
-    }
+        function updateCards(data) {
+            const container = document.getElementById('words');
+            if(data.words) container.innerHTML = data.words.map(w => `<div class="bg-white/5 p-2 rounded-lg flex justify-between"><b>${w.word}</b><span>${w.mean}</span></div>`).join('');
+        }
 
-    function updateCards(data) {
-        const w = document.getElementById('words');
-        if(w && data.words) w.innerHTML = data.words.map(i => `<div>\${i.word}: \${i.mean}</div>`).join('');
-    }
-</script>
+        function speak(text) {
+            const ut = new SpeechSynthesisUtterance(text);
+            ut.lang = document.getElementById('lang').value;
+            window.speechSynthesis.speak(ut);
+        }
+    </script>
 </body>
 </html>
