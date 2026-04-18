@@ -50,68 +50,114 @@
     </div>
 
     <script>
-        const API_URL = 'https://en.ymtea.club'; // 填入你的 Worker 域名
-        const mic = document.getElementById('mic');
-        const status = document.getElementById('status');
-        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        
+    const API_URL = 'https://en.ymtea.club'; 
+    const mic = document.getElementById('mic');
+    const status = document.getElementById('status');
+    const chat = document.getElementById('chat');
+
+    // 1. 兼容性初始化
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+
+    if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+    } else {
+        status.innerText = "浏览器不支持语音识别";
+        status.style.color = "red";
+    }
+
+    // 2. 语音识别启动逻辑
+    mic.onclick = () => {
+        if (!recognition) {
+            alert("您的设备不支持语音识别，请尝试使用 Chrome 浏览器");
+            return;
+        }
+
+        // 如果是 http 访问，提醒换成 https
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+            status.innerText = "需使用HTTPS访问才能开启麦克风";
+            return;
+        }
+
+        try {
+            recognition.lang = document.getElementById('lang').value;
+            recognition.start();
+        } catch (e) {
+            // 如果已经在运行中，点击则停止
+            recognition.stop();
+            status.innerText = "已重置，请再次点击";
+        }
+    };
+
+    // 3. 状态回调
+    if (recognition) {
         recognition.onstart = () => {
             mic.classList.add('mic-active');
-            status.innerText = "Listening...";
+            status.innerText = "正在倾听...";
+        };
+
+        recognition.onerror = (event) => {
+            mic.classList.remove('mic-active');
+            // 将错误直接显示在页面上，方便你调试
+            status.innerText = "错误: " + event.error;
+            console.error(event);
         };
 
         recognition.onresult = async (e) => {
             mic.classList.remove('mic-active');
-            status.innerText = "Thinking...";
+            status.innerText = "思考中...";
             const text = e.results[0][0].transcript;
             appendMsg('User', text);
 
             try {
                 const res = await fetch(API_URL, {
                     method: 'POST',
-                    body: JSON.stringify({ text, lang: document.getElementById('lang').value })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        text: text, 
+                        lang: document.getElementById('lang').value 
+                    })
                 });
-                const data = await res.json();
+
+                if (!res.ok) throw new Error('后端响应异常: ' + res.status);
                 
-                // Cloudflare AI 返回的是已经解析好的 JSON 对象
+                const data = await res.json();
                 appendMsg('AI', data.answer);
                 updateLearningCards(data);
                 speak(data.answer);
             } catch (err) {
-                status.innerText = "Error!";
+                status.innerText = "API错误: " + err.message;
             }
         };
+    }
 
-        function appendMsg(sender, text) {
-            const chat = document.getElementById('chat');
-            const div = document.createElement('div');
-            div.className = `p-4 rounded-2xl ${sender === 'User' ? 'bg-indigo-600/10 ml-10 border border-indigo-500/20' : 'bg-zinc-800 mr-10 border border-white/5'}`;
-            div.innerHTML = `<small class="block mb-1 text-zinc-500">${sender}</small>${text}`;
-            chat.appendChild(div);
-            chat.scrollTop = chat.scrollHeight;
-        }
+    function appendMsg(sender, text) {
+        const div = document.createElement('div');
+        div.className = `p-4 rounded-2xl ${sender === 'User' ? 'bg-indigo-600/10 ml-10 border border-indigo-500/20' : 'bg-zinc-800 mr-10 border border-white/5'}`;
+        div.innerHTML = `<small class="block mb-1 text-zinc-500">${sender}</small>${text}`;
+        chat.appendChild(div);
+        chat.scrollTop = chat.scrollHeight;
+    }
 
-        function updateLearningCards(data) {
-            document.getElementById('words').innerHTML = data.words.map(w => `
-                <div class="flex justify-between items-center">
-                    <span class="font-bold text-indigo-400">${w.word}</span>
-                    <span class="text-xs text-zinc-500">${w.mean}</span>
-                </div>
-            `).join('');
-            document.getElementById('phrases').innerHTML = data.phrases.map(p => `<p class="mb-2">“${p}”</p>`).join('');
-            status.innerText = "Ready";
-        }
+    function updateLearningCards(data) {
+        if (!data.words || !data.phrases) return;
+        document.getElementById('words').innerHTML = data.words.map(w => `
+            <div class="flex justify-between items-center">
+                <span class="font-bold text-indigo-400">${w.word}</span>
+                <span class="text-xs text-zinc-500">${w.mean}</span>
+            </div>
+        `).join('');
+        document.getElementById('phrases').innerHTML = data.phrases.map(p => `<p class="mb-2">“${p}”</p>`).join('');
+        status.innerText = "准备就绪";
+    }
 
-        function speak(text) {
-            const ut = new SpeechSynthesisUtterance(text);
-            ut.lang = document.getElementById('lang').value;
-            window.speechSynthesis.speak(ut);
-        }
-
-        mic.onclick = () => {
-            recognition.lang = document.getElementById('lang').value;
-            recognition.start();
-        };
-    </script>
+    function speak(text) {
+        const ut = new SpeechSynthesisUtterance(text);
+        ut.lang = document.getElementById('lang').value;
+        window.speechSynthesis.speak(ut);
+    }
+</script>
 </body>
 </html>
