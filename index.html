@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polyglot AI Tutor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background: #0c0c0e; color: #e4e4e7; }
+        .card { background: #18181b; border: 1px solid #27272a; border-radius: 1.5rem; }
+        .mic-active { background: #ef4444 !important; box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col p-4 md:p-10">
+    <div class="max-w-5xl mx-auto w-full flex-grow flex flex-col">
+        <div class="flex justify-between items-center mb-10">
+            <h1 class="text-2xl font-black italic tracking-tighter text-indigo-500">YMTEA.VOICE</h1>
+            <select id="lang" class="bg-zinc-800 border-none rounded-xl px-4 py-2 text-sm focus:ring-2 ring-indigo-500">
+                <option value="en-US">English</option>
+                <option value="de-DE">Deutsch</option>
+                <option value="fr-FR">Français</option>
+                <option value="es-ES">Español</option>
+            </select>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 flex-grow">
+            <div class="md:col-span-2 card p-6 flex flex-col">
+                <div id="chat" class="flex-grow overflow-y-auto space-y-4 mb-6 pr-2 max-h-[50vh]">
+                    <p class="text-zinc-500 text-center mt-20">点击下方按钮开始实时语音对话</p>
+                </div>
+                <div class="flex flex-col items-center gap-4">
+                    <button id="mic" class="w-20 h-20 bg-indigo-600 rounded-full flex items-center justify-center transition-all active:scale-90">
+                        <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                    </button>
+                    <span id="status" class="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-bold">Waiting...</span>
+                </div>
+            </div>
+
+            <div class="space-y-6">
+                <div class="card p-6 border-l-4 border-l-indigo-500">
+                    <h2 class="text-xs font-bold text-zinc-500 uppercase mb-4 tracking-widest">关键生词</h2>
+                    <div id="words" class="space-y-3"></div>
+                </div>
+                <div class="card p-6 border-l-4 border-l-emerald-500">
+                    <h2 class="text-xs font-bold text-zinc-500 uppercase mb-4 tracking-widest">地道表达</h2>
+                    <div id="phrases" class="text-sm italic text-zinc-300"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://en.ymtea.club'; // 填入你的 Worker 域名
+        const mic = document.getElementById('mic');
+        const status = document.getElementById('status');
+        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        
+        recognition.onstart = () => {
+            mic.classList.add('mic-active');
+            status.innerText = "Listening...";
+        };
+
+        recognition.onresult = async (e) => {
+            mic.classList.remove('mic-active');
+            status.innerText = "Thinking...";
+            const text = e.results[0][0].transcript;
+            appendMsg('User', text);
+
+            try {
+                const res = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ text, lang: document.getElementById('lang').value })
+                });
+                const data = await res.json();
+                
+                // Cloudflare AI 返回的是已经解析好的 JSON 对象
+                appendMsg('AI', data.answer);
+                updateLearningCards(data);
+                speak(data.answer);
+            } catch (err) {
+                status.innerText = "Error!";
+            }
+        };
+
+        function appendMsg(sender, text) {
+            const chat = document.getElementById('chat');
+            const div = document.createElement('div');
+            div.className = `p-4 rounded-2xl ${sender === 'User' ? 'bg-indigo-600/10 ml-10 border border-indigo-500/20' : 'bg-zinc-800 mr-10 border border-white/5'}`;
+            div.innerHTML = `<small class="block mb-1 text-zinc-500">${sender}</small>${text}`;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        function updateLearningCards(data) {
+            document.getElementById('words').innerHTML = data.words.map(w => `
+                <div class="flex justify-between items-center">
+                    <span class="font-bold text-indigo-400">${w.word}</span>
+                    <span class="text-xs text-zinc-500">${w.mean}</span>
+                </div>
+            `).join('');
+            document.getElementById('phrases').innerHTML = data.phrases.map(p => `<p class="mb-2">“${p}”</p>`).join('');
+            status.innerText = "Ready";
+        }
+
+        function speak(text) {
+            const ut = new SpeechSynthesisUtterance(text);
+            ut.lang = document.getElementById('lang').value;
+            window.speechSynthesis.speak(ut);
+        }
+
+        mic.onclick = () => {
+            recognition.lang = document.getElementById('lang').value;
+            recognition.start();
+        };
+    </script>
+</body>
+</html>
