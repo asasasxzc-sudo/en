@@ -47,99 +47,124 @@
     </div>
 
     <script>
-        const API_URL = 'https://en.ymtea.club'; 
-        const mic = document.getElementById('mic');
-        const status = document.getElementById('status');
-        const chat = document.getElementById('chat');
+    // 自动适配你的 Worker 地址
+    const API_URL = window.location.origin; 
+    const mic = document.getElementById('mic') || document.getElementById('micBtn');
+    const status = document.getElementById('status');
+    const chat = document.getElementById('chat');
 
-        // 关键：全局唯一的识别实例
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        let recognition = null;
-        let isStarted = false;
+    const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+    let isStarted = false;
 
-        if (SpeechRecognition) {
-            recognition = new SpeechRecognition();
-            recognition.continuous = false;
-            recognition.interimResults = false;
+    if (!Speech) {
+        status.innerText = "抱歉，您的浏览器不支持语音识别";
+    } else {
+        recognition = new Speech();
+        recognition.continuous = false;
+        recognition.interimResults = false;
 
-            recognition.onstart = () => {
-                isStarted = true;
-                mic.classList.add('mic-active');
-                status.innerText = "LISTENING...";
-            };
+        // 核心：处理开始录音
+        recognition.onstart = () => {
+            isStarted = true;
+            mic.classList.add('mic-active', 'pulse'); // 增加动画反馈
+            status.innerText = "正在倾听...";
+        };
 
-            recognition.onend = () => {
-                isStarted = false;
-                mic.classList.remove('mic-active');
-                if(status.innerText === "LISTENING...") status.innerText = "READY";
-            };
+        // 核心：处理录音结束
+        recognition.onend = () => {
+            isStarted = false;
+            mic.classList.remove('mic-active', 'pulse');
+            if (status.innerText === "正在倾听...") status.innerText = "就绪";
+        };
 
-            recognition.onerror = (e) => {
-                isStarted = false;
-                mic.classList.remove('mic-active');
-                status.innerText = "ERROR: " + e.error;
-                // 如果报错 aborted，通常是重复启动，这里做个静默处理
-                if(e.error === 'aborted') status.innerText = "READY (RESET)";
-            };
-
-            recognition.onresult = async (e) => {
-                const text = e.results[0][0].transcript;
-                addMsg('User', text);
-                status.innerText = "THINKING...";
-
-                try {
-                    const res = await fetch(API_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ text, lang: document.getElementById('lang').value })
-                    });
-                    const data = await res.json();
-                    addMsg('AI', data.answer);
-                    updateCards(data);
-                    speak(data.answer);
-                    status.innerText = "READY";
-                } catch (err) {
-                    status.innerText = "API ERROR";
-                }
-            };
-        }
-
-        mic.onclick = () => {
-            if (!recognition) return alert("浏览器不支持");
+        // 核心：处理错误
+        recognition.onerror = (e) => {
+            isStarted = false;
+            mic.classList.remove('mic-active', 'pulse');
+            console.error("Speech Error:", e.error);
             
-            // 核心逻辑：如果正在听，就手动停止；如果没有，就启动
-            if (isStarted) {
-                recognition.stop();
+            if (e.error === 'not-allowed') {
+                status.innerText = "错误：权限被拒绝";
+                alert("请点击地址栏左侧『小锁』或『AA』图标，手动允许麦克风。");
+            } else if (e.error === 'aborted') {
+                status.innerText = "已重置 (RESET)";
             } else {
-                recognition.lang = document.getElementById('lang').value;
-                try {
-                    recognition.start();
-                } catch(err) {
-                    // 彻底清除可能的异常状态
-                    recognition.stop();
-                    setTimeout(() => recognition.start(), 100);
-                }
+                status.innerText = "错误: " + e.error;
             }
         };
 
-        function addMsg(s, t) {
-            const d = document.createElement('div');
-            d.className = `p-3 rounded-xl ${s==='User'?'bg-indigo-600/20 ml-8':'bg-zinc-800 mr-8'}`;
-            d.innerHTML = `<small class="block text-zinc-500 text-[10px]">${s}</small>${t}`;
-            chat.appendChild(d);
-            chat.scrollTop = chat.scrollHeight;
-        }
+        // 核心：处理识别结果
+        recognition.onresult = async (e) => {
+            const text = e.results[0][0].transcript;
+            appendMsg('User', text);
+            status.innerText = "AI 思考中...";
 
-        function updateCards(data) {
-            document.getElementById('words').innerHTML = (data.words||[]).map(w => `<div>${w.word}: ${w.mean}</div>`).join('');
-            document.getElementById('phrases').innerHTML = (data.phrases||[]).map(p => `<p>• ${p}</p>`).join('');
-        }
+            try {
+                const res = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text, lang: document.getElementById('lang').value })
+                });
+                const data = await res.json();
+                
+                appendMsg('AI', data.answer);
+                updateCards(data);
+                speak(data.answer);
+                status.innerText = "就绪";
+            } catch (err) {
+                status.innerText = "API 连接失败";
+            }
+        };
+    }
 
-        function speak(t) {
-            const u = new SpeechSynthesisUtterance(t);
-            u.lang = document.getElementById('lang').value;
-            window.speechSynthesis.speak(u);
+    // 绑定点击事件 - 针对 iPad 优化的暴力启动逻辑
+    mic.onclick = () => {
+        if (!recognition) return;
+
+        // 1. 尝试播放一个静音片段（iOS 必须先有音频交互才能解锁录音通道）
+        const synth = window.speechSynthesis;
+        const u = new SpeechSynthesisUtterance("");
+        u.volume = 0;
+        synth.speak(u);
+
+        if (isStarted) {
+            recognition.stop();
+        } else {
+            // 2. 先强行终止之前的实例
+            try { recognition.abort(); } catch(e) {}
+
+            // 3. 稍作延迟后再启动
+            setTimeout(() => {
+                try {
+                    recognition.lang = document.getElementById('lang').value;
+                    recognition.start();
+                } catch (err) {
+                    status.innerText = "启动失败，请刷新";
+                }
+            }, 200);
         }
-    </script>
+    };
+
+    function appendMsg(sender, text) {
+        const div = document.createElement('div');
+        div.className = `p-4 rounded-2xl ${sender === 'User' ? 'bg-indigo-600/10 ml-10 border border-indigo-500/20' : 'bg-zinc-800 mr-10 border border-white/5'}`;
+        div.innerHTML = `<small class="block mb-1 text-zinc-500 text-[10px] font-bold uppercase">${sender}</small><p>${text}</p>`;
+        chat.appendChild(div);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    function updateCards(data) {
+        if (data.words) {
+            document.getElementById('words').innerHTML = data.words.map(w => `<div>${w.word}: ${w.mean}</div>`).join('');
+        }
+    }
+
+    function speak(text) {
+        const ut = new SpeechSynthesisUtterance(text);
+        ut.lang = document.getElementById('lang').value;
+        window.speechSynthesis.speak(ut);
+    }
+</script>
 </body>
 </html>
