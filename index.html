@@ -108,25 +108,34 @@
 
     // 针对 iPad 优化的点击逻辑
     mic.onclick = () => {
-        if (!recognition) return alert("Browser not supported");
+    if (!recognition) return alert("浏览器不支持");
 
-        // 第一步：激活音频（重要！）
-        window.speechSynthesis.getVoices(); 
-        
-        // 第二步：强制重置
-        try { recognition.abort(); } catch(err) {}
+    // 1. 强制夺取音频上下文控制权 (iOS 必做)
+    window.speechSynthesis.getVoices();
+    const synth = window.speechSynthesis;
+    const u = new SpeechSynthesisUtterance("");
+    u.volume = 0;
+    synth.speak(u);
 
-        // 第三步：极速启动
-        setTimeout(() => {
-            try {
-                recognition.lang = document.getElementById('lang').value;
+    // 2. 检查状态并切换
+    if (isStarted) {
+        recognition.stop();
+        isStarted = false;
+        status.innerText = "Ready";
+    } else {
+        // 3. 核心：不加任何 setTimeout，直接启动
+        try {
+            recognition.lang = document.getElementById('lang').value;
+            recognition.start();
+        } catch (err) {
+            // 如果启动瞬间报错，说明有残留，强行 abort 后立即重试
+            recognition.abort();
+            setTimeout(() => {
                 recognition.start();
-            } catch (e) {
-                location.reload(); // 如果连启动都崩了，直接刷页面
-            }
-        }, 50);
-    };
-
+            }, 50);
+        }
+    }
+};
     function appendMsg(s, t) {
         const d = document.createElement('div');
         d.className = `p-3 rounded-xl mb-2 \${s==='User'?'bg-indigo-600/20 ml-8':'bg-zinc-800 mr-8'}`;
